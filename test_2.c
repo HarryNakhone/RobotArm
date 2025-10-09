@@ -19,6 +19,8 @@ static struct k_thread log_thread_data;
 
 static struct sensor_trigger trig_mode;
 
+static zsl_real_t gyro_bias[3] = {0};
+
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
@@ -128,6 +130,8 @@ void madg_cal(const struct device *dev){  /// calibration
     static zsl_real_t mag_buf[60 * 3];
     size_t idx = 60;
 
+    zsl_real_t sum_gyr[3] = {0};
+
     for(size_t i= 0; i < idx; i++){
         int ret = process_mpu9250(dev, &data);
 
@@ -137,6 +141,8 @@ void madg_cal(const struct device *dev){  /// calibration
             LOG_ERR("Failed to set trigger mode in calibration");
             return;
         }
+        
+        
         acc_buf[i * 3 + 0] = data.acc1;
         acc_buf[i * 3 + 1] = data.acc2;
         acc_buf[i * 3 + 2] = data.acc3;
@@ -145,11 +151,21 @@ void madg_cal(const struct device *dev){  /// calibration
         gyr_buf[i * 3 + 1] = data.gyr2;
         gyr_buf[i * 3 + 2] = data.gyr3;
 
+        sum_gyr[0] += data.gyr1;
+        sum_gyr[1] += data.gyr2;
+        sum_gyr[2] += data.gyr3;
+
+
         mag_buf[i * 3 + 0] = data.mag1;
         mag_buf[i * 3 + 1] = data.mag2;
         mag_buf[i * 3 + 2] = data.mag3;
 
     }
+
+    gyro_bias[0] = sum_gyr[0] /idx;
+    gyro_bias[1] = sum_gyr[1] /idx;
+    gyro_bias[2] = sum_gyr[2] /idx;
+
      struct zsl_mtx acc = {  // Turn samples into matrix for all  axis
                 .sz_rows = 60,
                 .sz_cols = 3,
@@ -215,9 +231,9 @@ static void mpu_data_ready(const struct device *dev, const struct sensor_trigger
     av.data[1] = data.acc2;
     av.data[2] = data.acc3;
 
-    gv.data[0] = data.gyr1;
-    gv.data[1] = data.gyr2;
-    gv.data[2] = data.gyr3;
+    gv.data[0] = data.gyr1 - gyro_bias[0]; 
+    gv.data[1] = data.gyr2 - gyro_bias[1];
+    gv.data[2] = data.gyr3 - gyro_bias[2];
 
     mv.data[0] = data.mag1;
     mv.data[1] = data.mag2;
